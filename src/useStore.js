@@ -2,6 +2,23 @@
 import { useState, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
 
+// Maps JS getDay() (0=Sun) to weeklyData index (0=Mon ... 6=Sun)
+const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+function todayDayLabel() {
+  const d = new Date().getDay(); // 0=Sun,1=Mon,...
+  return DAY_LABELS[d === 0 ? 6 : d - 1];
+}
+
+// Returns updated weeklyData with today's hours and tasks count
+function syncWeeklyDay(weeklyData, hours, completedTasks) {
+  const label = todayDayLabel();
+  return weeklyData.map(entry =>
+    entry.day === label
+      ? { ...entry, hours: +hours.toFixed(1), tasks: completedTasks }
+      : entry
+  );
+}
+
 const STORAGE_KEY = 'mission160_data';
 
 const defaultTimetable = [
@@ -113,7 +130,6 @@ export function useStore() {
       const timetable = prev.timetable.map(b =>
         b.id === id ? { ...b, completed: !b.completed } : b
       );
-      const completed = timetable.filter(b => b.completed).length;
       const totalHoursToday = timetable
         .filter(b => b.completed)
         .reduce((acc, b) => {
@@ -121,7 +137,9 @@ export function useStore() {
           const [eh, em] = b.end.split(':').map(Number);
           return acc + (eh * 60 + em - sh * 60 - sm) / 60;
         }, 0);
-      const next = { ...prev, timetable, totalHoursToday: +totalHoursToday.toFixed(1) };
+      const completedTasks = prev.tasks.filter(t => t.done).length;
+      const weeklyData = syncWeeklyDay(prev.weeklyData, totalHoursToday, completedTasks);
+      const next = { ...prev, timetable, totalHoursToday: +totalHoursToday.toFixed(1), weeklyData };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
       return next;
     });
@@ -133,8 +151,10 @@ export function useStore() {
       const tasks = prev.tasks.map(t => t.id === id ? { ...t, done: !t.done } : t);
       const allDone = tasks.every(t => t.done);
       const today = format(new Date(), 'yyyy-MM-dd');
-      const heatmap = { ...prev.heatmap, [today]: tasks.filter(t => t.done).length };
-      const next = { ...prev, tasks, allCompletedToday: allDone, heatmap };
+      const completedTasks = tasks.filter(t => t.done).length;
+      const heatmap = { ...prev.heatmap, [today]: completedTasks };
+      const weeklyData = syncWeeklyDay(prev.weeklyData, prev.totalHoursToday, completedTasks);
+      const next = { ...prev, tasks, allCompletedToday: allDone, heatmap, weeklyData };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
       return next;
     });
